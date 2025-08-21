@@ -1,0 +1,5 @@
+services:
+  product-service:
+    build: ./services/product-service
+    ports:
+      - "5001:5279"
