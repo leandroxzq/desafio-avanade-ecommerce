@@ -1,5 +1,25 @@
 services:
+  product-db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: ProductDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - product_data:/var/lib/postgresql/data
+
   product-service:
-    build: ./services/product-service
+    build: ./services/ProductService
+    depends_on:
+      - product-db
+    environment:
+      - DATABASE_URL=Host=product-db;Port=5432;Database=ProductDb;Username=postgres;Password=root
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5279
     ports:
       - "5001:5279"
+
+volumes:
+  product_data:
