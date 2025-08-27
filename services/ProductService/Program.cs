@@ -8,6 +8,8 @@ var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
 builder.Services.AddOpenApi();
+builder.Services.AddScoped<IProductService, ProductAppService>();
+builder.Services.AddControllers();
 
 builder.Services.AddDbContext<ProductDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -25,50 +27,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// CRUD Endpoints
-
-app.MapGet("/products", async (ProductDbContext db) =>
-        await db.Products.ToListAsync()
-).WithName("GetAllProducts");
-
-app.MapGet("/products/{id:int}", async (int id, ProductDbContext db) =>
-    await db.Products.FindAsync(id) is Product product
-        ? Results.Ok(product)
-        : Results.NotFound()
-);
-
-app.MapPost("/products", async (Product product, ProductDbContext db) =>
-{
-    db.Products.Add(product);
-    await db.SaveChangesAsync();
-    return Results.Created($"/products/{product.Id}", product);
-});
-
-app.MapPut("/products/{id:int}", async (int id, Product inputProduct, ProductDbContext db) =>
-{
-    var product = await db.Products.FindAsync(id);
-    if (product is null) return Results.NotFound();
-
-    product.Name = inputProduct.Name;
-    product.Description = inputProduct.Description;
-    product.Price = inputProduct.Price;
-    product.Stock = inputProduct.Stock;
-
-    await db.SaveChangesAsync();
-    return Results.NoContent();
-});
-
-
-app.MapDelete("/products/{id:int}", async (int id, ProductDbContext db) =>
-{
-    var product = await db.Products.FindAsync(id);
-    if (product is null) return Results.NotFound();
-
-    db.Products.Remove(product);
-    await db.SaveChangesAsync();
-    return Results.NoContent();
-});
+app.MapControllers();
 
 using (var scope = app.Services.CreateScope())
 {
