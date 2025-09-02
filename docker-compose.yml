@@ -1,4 +1,26 @@
 services:
+  sales-db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: SalesDb
+    ports:
+      - "5434:5432"
+    volumes:
+      - sales_data:/var/lib/postgresql/data
+
+  sales-service:
+    build: ./services/SaleService
+    depends_on:
+      - sales-db
+    environment:
+      - DATABASE_URL=Host=sales-db;Port=5432;Database=SalesDb;Username=postgres;Password=root
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5078
+    ports:
+      - "5003:5078"
+
   auth-db:
     image: postgres:17
     environment:
@@ -46,3 +68,4 @@ services:
 volumes:
   product_data:
   auth_data:
+  sales_data:

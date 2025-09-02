@@ -38,9 +38,9 @@ using (var scope = app.Services.CreateScope())
     if (!db.Products.Any())
     {
         db.Products.AddRange(
-            new Product { Name = "Notebook", Description = "Notebook Gamer", Price = 5000, Stock = 10 },
-            new Product { Name = "Mouse", Description = "Mouse sem fio", Price = 150, Stock = 50 },
-            new Product { Name = "Teclado", Description = "Teclado mecânico", Price = 350, Stock = 30 }
+            new Product { Name = "Notebook", Description = "Notebook Gamer", Price = 5000, Stock = 10, CreatedBy = "admin" },
+            new Product { Name = "Mouse", Description = "Mouse sem fio", Price = 150, Stock = 50, CreatedBy = "admin" },
+            new Product { Name = "Teclado", Description = "Teclado mecânico", Price = 350, Stock = 30, CreatedBy = "admin" }
         );
         db.SaveChanges();
     }
