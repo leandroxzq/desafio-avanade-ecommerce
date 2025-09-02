@@ -1,4 +1,15 @@
 services:
+  ocelot-gateway:
+    build: ./gateway
+    depends_on:
+      - product-service
+      - sales-service
+      - auth-service
+    ports:
+      - "5292:8080"
+    volumes:
+      - ./gateway/ocelot.json:/app/ocelot.json
+
   sales-db:
     image: postgres:17
     environment:
