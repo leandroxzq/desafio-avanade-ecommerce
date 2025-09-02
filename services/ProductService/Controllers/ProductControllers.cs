@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ProductService.Models;
+using ProductService.DTOs;
+using ProductService.Dtos;
 
 namespace ProductService.Controllers;
 
@@ -54,5 +56,51 @@ public class ProductsController : ControllerBase
         if (product is null) return NotFound();
 
         return NoContent();
+    }
+
+    [HttpPost("availability")]
+    public async Task<IActionResult> CheckAvaibility([FromBody] List<ProductStockRequest> items)
+    {
+        var missing = new List<UnavailableItem>();
+
+        foreach (var i in items)
+        {
+            var product = await _productService.GetByIdASync(i.ProductId);
+            if (product == null || product.Stock < i.Quantity)
+            {
+                missing.Add(new UnavailableItem(i.ProductId, product?.Stock ?? 0));
+            }
+        }
+
+        return Ok(new AvailabilityResponse
+        {
+            Available = missing.Count == 0,
+            Missing = missing
+        });
+    }
+
+    [HttpPost("decrease")]
+    public async Task<IActionResult> DecreaseStock([FromBody] List<ProductStockRequest> items)
+    {
+        var failed = new List<UnavailableItem>();
+
+        foreach (var i in items)
+        {
+            var product = await _productService.GetByIdASync(i.ProductId);
+            if (product == null || product.Stock < i.Quantity)
+            {
+                failed.Add(new UnavailableItem(i.ProductId, product?.Stock ?? 0));
+                continue;
+            }
+
+            product.Stock -= i.Quantity;
+            await _productService.UpdateAsync(product);
+        }
+
+        return Ok(new DecreaseResponse
+        {
+            Success = failed.Count == 0,
+            Failed = failed
+        });
     }
 }
