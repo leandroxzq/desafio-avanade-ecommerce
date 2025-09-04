@@ -9,10 +9,14 @@ namespace AuthService.Services;
 public class TokenService
 {
     private readonly string _jwtKey;
+    private readonly string _jwtIssuer;
+    private readonly string _jwtAudience;
 
     public TokenService(IConfiguration config)
     {
         _jwtKey = config["Jwt:Key"] ?? throw new ArgumentNullException("Jwt:Key");
+         _jwtIssuer = config["Jwt:Issuer"] ?? throw new ArgumentNullException("Jwt:Issuer");
+        _jwtAudience = config["Jwt:Audience"] ?? throw new ArgumentNullException("Jwt:Audience");
     }
 
     public string GenerateToken(User user)
@@ -28,7 +32,9 @@ public class TokenService
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
             }),
             Expires = DateTime.UtcNow.AddHours(1),
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
+            Issuer = _jwtIssuer,
+            Audience = _jwtAudience 
         };
 
         var token = tokenHandler.CreateToken(tokenDescriptor);
