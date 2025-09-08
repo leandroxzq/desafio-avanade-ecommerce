@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using SalesService.Data;
 using SalesService.DTOs;
 using SalesService.Models;
+using RabbitMQ.Client;
+using System.Text;
+using System.Text.Json;
 
 namespace SalesService.Controllers;
 
@@ -25,55 +28,60 @@ public class SalesController : ControllerBase
         if (request?.Items == null || request.Items.Count == 0)
             return BadRequest("Nenhum item informado.");
 
-        var client = _httpClientFactory.CreateClient("product");
-
-        // 1) Checar disponibilidade
-        var availabilityResp = await client.PostAsJsonAsync("/api/products/availability", request.Items, ct);
-        if (!availabilityResp.IsSuccessStatusCode)
-            return StatusCode((int)availabilityResp.StatusCode, "Erro ao checar estoque.");
-
-        var availability = await availabilityResp.Content.ReadFromJsonAsync<AvailabilityResponse>(cancellationToken: ct);
-        if (availability == null || !availability.Available)
-            return Conflict(new { message = "Estoque insuficiente", availability?.Missing });
-
-        // 2) Baixar estoque
-        var decreaseResp = await client.PostAsJsonAsync("/api/products/decrease", request.Items, ct);
-        if (!decreaseResp.IsSuccessStatusCode)
-            return StatusCode((int)decreaseResp.StatusCode, "Erro ao baixar estoque.");
-
-        var decrease = await decreaseResp.Content.ReadFromJsonAsync<DecreaseResponse>(cancellationToken: ct);
-        if (decrease == null || !decrease.Success)
-            return Conflict(new { message = "Falha ao baixar estoque", decrease?.Failed });
-
-        // 3) Criar venda
         var sale = new Sale
         {
             Id = Guid.NewGuid(),
-            CustomerId = "anon", // futuramente vem do JWT via Gateway
+            CustomerId = "anon",
             Items = request.Items.Select(i => new SaleItem
             {
-                Id = Guid.NewGuid(),
                 ProductId = i.ProductId,
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice
             }).ToList(),
             TotalAmount = request.Items.Sum(i => i.UnitPrice * i.Quantity),
-            Status = SaleStatus.Confirmed
+            Status = SaleStatus.Created,
+            CreatedAt = DateTime.UtcNow,
+            History = new List<SaleHistory>
+            {
+                new SaleHistory
+                {
+                    Timestamp = DateTime.UtcNow,
+                    Action = "Pedido criado",
+                    Details = "Pedido em processamento"
+                }
+            }
         };
 
-        sale.History.Add(new SaleHistory
-        {
-            Id = Guid.NewGuid(),
-            SaleId = sale.Id,
-            Action = "SALE_CREATED",
-            Details = "Venda criada e estoque baixado"
-        });
+        // PUBLICAR NO RABBITMQ
+        var factory = new ConnectionFactory { HostName = "localhost" };
+        using var connection = await factory.CreateConnectionAsync();
+        using var channel = await connection.CreateChannelAsync();
 
-        _db.Sales.Add(sale);
-        await _db.SaveChangesAsync(ct);
+        await channel.QueueDeclareAsync(
+            queue: "sales",
+            durable: false,
+            exclusive: false,
+            autoDelete: false,
+            arguments: null
+        );
 
-        return CreatedAtAction(nameof(GetById), new { id = sale.Id },
-            new SaleResponse(sale.Id, sale.Status, sale.TotalAmount, sale.CreatedAt));
+        string message = JsonSerializer.Serialize(sale);
+        var body = Encoding.UTF8.GetBytes(message);
+
+        await channel.BasicPublishAsync(
+            exchange: string.Empty,
+            routingKey: "sales",
+            body: body
+        );
+
+        var response = new SaleResponse(
+            sale.Id,
+            sale.Status,
+            sale.TotalAmount,
+            sale.CreatedAt
+        );
+
+        return Ok(response);
     }
 
     [HttpGet("{id:guid}")]

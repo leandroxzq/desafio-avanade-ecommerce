@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using SalesService.Data;
-using SalesService.Clients;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,13 +26,6 @@ builder.Services.AddDbContext<SalesDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddControllers();
-
-builder.Services.AddHttpClient("product", c =>
-{
-    c.BaseAddress = new Uri("http://product-service:5279");
-});
-
-builder.Services.AddScoped<ProductServiceClient>();
 
 var app = builder.Build();
 
