@@ -14,12 +14,11 @@ namespace SalesService.Controllers;
 public class SalesController : ControllerBase
 {
     private readonly SalesDbContext _db;
-    private readonly IHttpClientFactory _httpClientFactory;
 
-    public SalesController(SalesDbContext db, IHttpClientFactory httpClientFactory)
+
+    public SalesController(SalesDbContext db)
     {
         _db = db;
-        _httpClientFactory = httpClientFactory;
     }
 
     [HttpPost]
