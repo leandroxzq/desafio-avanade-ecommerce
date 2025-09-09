@@ -15,7 +15,7 @@ public class TokenService
     public TokenService(IConfiguration config)
     {
         _jwtKey = config["Jwt:Key"] ?? throw new ArgumentNullException("Jwt:Key");
-         _jwtIssuer = config["Jwt:Issuer"] ?? throw new ArgumentNullException("Jwt:Issuer");
+        _jwtIssuer = config["Jwt:Issuer"] ?? throw new ArgumentNullException("Jwt:Issuer");
         _jwtAudience = config["Jwt:Audience"] ?? throw new ArgumentNullException("Jwt:Audience");
     }
 
@@ -34,7 +34,7 @@ public class TokenService
             Expires = DateTime.UtcNow.AddHours(1),
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
             Issuer = _jwtIssuer,
-            Audience = _jwtAudience 
+            Audience = _jwtAudience
         };
 
         var token = tokenHandler.CreateToken(tokenDescriptor);

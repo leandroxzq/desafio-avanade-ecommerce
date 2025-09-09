@@ -29,7 +29,7 @@ public class ProductsController : ControllerBase
 
     [HttpPost]
     public async Task<IActionResult> Create(Product product)
-    
+
     {
         var created = await _productService.CreateAsync(product);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);

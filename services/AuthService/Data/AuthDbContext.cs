@@ -9,4 +9,4 @@ public class AuthDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
 }
- 
+
