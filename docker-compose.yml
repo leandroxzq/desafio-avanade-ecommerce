@@ -8,6 +8,12 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
@@ -33,11 +39,20 @@ services:
     volumes:
       - sales_data:/var/lib/postgresql/data
 
+  sales-consumer:
+    build: ./services/SalesConsumer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+
   sales-service:
     build: ./services/SaleService
     depends_on:
       - sales-db
     environment:
+      - RABBITMQ_HOST=rabbitmq
       - DATABASE_URL=Host=sales-db;Port=5432;Database=SalesDb;Username=postgres;Password=root
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5078

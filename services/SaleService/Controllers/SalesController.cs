@@ -51,8 +51,8 @@ public class SalesController : ControllerBase
             }
         };
 
-        // PUBLICAR NO RABBITMQ
-        var factory = new ConnectionFactory { HostName = "localhost" };
+        var rabbitHost = Environment.GetEnvironmentVariable("RABBITMQ_HOST") ?? "localhost";
+        var factory = new ConnectionFactory { HostName = rabbitHost };
         using var connection = await factory.CreateConnectionAsync();
         using var channel = await connection.CreateChannelAsync();
 
