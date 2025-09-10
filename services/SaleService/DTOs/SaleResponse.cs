@@ -2,4 +2,4 @@ using SalesService.Models;
 
 namespace SalesService.DTOs;
 
-public record SaleResponse(Guid Id, SaleStatus Status, decimal TotalAmount, DateTime CreatedAt);
+public record SaleResponse(Guid Id, List<SaleItem> Items, SaleStatus Status, decimal TotalAmount, DateTime CreatedAt);

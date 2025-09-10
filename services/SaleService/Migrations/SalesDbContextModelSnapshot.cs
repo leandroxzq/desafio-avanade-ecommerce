@@ -43,7 +43,7 @@ namespace SaleService.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Sales");
+                    b.ToTable("Sales", (string)null);
                 });
 
             modelBuilder.Entity("SalesService.Models.SaleHistory", b =>
@@ -70,7 +70,7 @@ namespace SaleService.Migrations
 
                     b.HasIndex("SaleId");
 
-                    b.ToTable("SaleHistories");
+                    b.ToTable("SaleHistories", (string)null);
                 });
 
             modelBuilder.Entity("SalesService.Models.SaleItem", b =>
@@ -95,7 +95,7 @@ namespace SaleService.Migrations
 
                     b.HasIndex("SaleId");
 
-                    b.ToTable("SaleItems");
+                    b.ToTable("SaleItems", (string)null);
                 });
 
             modelBuilder.Entity("SalesService.Models.SaleHistory", b =>

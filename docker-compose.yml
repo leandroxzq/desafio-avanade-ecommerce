@@ -47,6 +47,7 @@ services:
     environment:
       - RABBITMQ_HOST=rabbitmq
       - PRODUCTSERVICE_URL=http://product-service:5279/api/
+      - SALESERVICE_URL=http://sales-service:5078/api/
 
   sales-service:
     build: ./services/SaleService

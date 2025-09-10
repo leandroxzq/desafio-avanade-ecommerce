@@ -6,6 +6,8 @@ using SalesService.Models;
 using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace SalesService.Controllers;
 
@@ -21,16 +23,24 @@ public class SalesController : ControllerBase
         _db = db;
     }
 
+    [Authorize]
     [HttpPost]
     public async Task<ActionResult<SaleResponse>> Create([FromBody] CreateSaleRequest request, CancellationToken ct)
     {
         if (request?.Items == null || request.Items.Count == 0)
             return BadRequest("Nenhum item informado.");
 
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized("ID do usuário não encontrado no token.");
+        }
+
         var sale = new Sale
         {
             Id = Guid.NewGuid(),
-            CustomerId = "anon",
+            CustomerId = userId,
             Items = request.Items.Select(i => new SaleItem
             {
                 ProductId = i.ProductId,
@@ -50,6 +60,9 @@ public class SalesController : ControllerBase
                 }
             }
         };
+
+        _db.Sales.Add(sale);
+        await _db.SaveChangesAsync(ct);
 
         var rabbitHost = Environment.GetEnvironmentVariable("RABBITMQ_HOST") ?? "localhost";
         var factory = new ConnectionFactory { HostName = rabbitHost };
@@ -75,6 +88,7 @@ public class SalesController : ControllerBase
 
         var response = new SaleResponse(
             sale.Id,
+            sale.Items.ToList(),
             sale.Status,
             sale.TotalAmount,
             sale.CreatedAt
@@ -83,15 +97,35 @@ public class SalesController : ControllerBase
         return Ok(response);
     }
 
-    [HttpGet("{id:guid}")]
-    public async Task<ActionResult<SaleResponse>> GetById([FromRoute] Guid id, CancellationToken ct)
+    [Authorize]
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<SaleResponse>>> GetAllByCustomer(CancellationToken ct)
     {
-        var sale = await _db.Sales.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (sale is null) return NotFound();
 
-        return new SaleResponse(sale.Id, sale.Status, sale.TotalAmount, sale.CreatedAt);
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+        {
+
+            return Unauthorized("ID do usuário não encontrado no token.");
+        }
+
+
+        var sales = await _db.Sales
+            .AsNoTracking()
+            .Where(s => s.CustomerId == userId)
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => new SaleResponse(s.Id, s.Items.ToList(), s.Status, s.TotalAmount, s.CreatedAt))
+            .ToListAsync(ct);
+
+        if (sales == null || !sales.Any())
+        {
+            return NotFound("Nenhuma compra encontrada para este usuário.");
+        }
+
+        return Ok(sales);
     }
 
+    [Authorize]
     [HttpGet("{id:guid}/history")]
     public async Task<ActionResult<IEnumerable<SaleHistoryResponse>>> GetHistory([FromRoute] Guid id, CancellationToken ct)
     {
@@ -103,6 +137,26 @@ public class SalesController : ControllerBase
 
         if (hist.Count == 0) return NotFound();
         return hist;
+    }
+
+    [HttpPatch("status")]
+    public async Task<ActionResult> UpdateSaleStatus([FromBody] SaleStatusUpdateRequest request)
+    {
+        var sale = await _db.Sales
+            .Include(s => s.History)
+            .FirstOrDefaultAsync(s => s.Id == request.Id);
+
+        if (sale == null)
+        {
+            return NotFound();
+        }
+
+        sale.Status = request.Status;
+        sale.History.Add(request.History);
+
+        await _db.SaveChangesAsync();
+
+        return NoContent();
     }
 
     private sealed class AvailabilityResponse

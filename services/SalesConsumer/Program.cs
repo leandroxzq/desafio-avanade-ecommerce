@@ -9,5 +9,11 @@ builder.Services.AddHttpClient("Inventory", client =>
     client.BaseAddress = new Uri(productServiceUrl);
 });
 
+var saleServiceUrl = Environment.GetEnvironmentVariable("SALESERVICE_URL") ?? "http://localhost:5078/api/";
+builder.Services.AddHttpClient("Sale", client =>
+{
+    client.BaseAddress = new Uri(saleServiceUrl);
+});
+
 var host = builder.Build();
 host.Run();

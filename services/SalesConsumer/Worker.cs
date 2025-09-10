@@ -37,105 +37,114 @@ public class Worker : BackgroundService
         _logger.LogInformation("📥 Consumer iniciado e aguardando mensagens...");
 
         var consumer = new AsyncEventingBasicConsumer(channel);
+        var clientInventory = _httpClientFactory.CreateClient("Inventory");
+        var salesClient = _httpClientFactory.CreateClient("Sale");
 
         consumer.ReceivedAsync += async (model, ea) =>
+{
+    var body = ea.Body.ToArray();
+    var message = Encoding.UTF8.GetString(body);
+
+    try
+    {
+        var sale = JsonSerializer.Deserialize<Sale>(message);
+
+        if (sale is null)
         {
-            var body = ea.Body.ToArray();
-            var message = Encoding.UTF8.GetString(body);
+            _logger.LogWarning("⚠️ Mensagem inválida recebida.");
+            await Task.Yield();
+            return;
+        }
 
-            try
+        var formattedJson = JsonSerializer.Serialize(sale, new JsonSerializerOptions { WriteIndented = true });
+        _logger.LogInformation($"📦 Mensagem recebida:\n{formattedJson}");
+
+        var finalStatus = SaleStatus.Failed;
+        var finalHistory = new SaleHistory { SaleId = sale.Id, Timestamp = DateTime.UtcNow };
+
+        var availabilityRequest = sale.Items
+          .Select(i => new { productId = i.ProductId, quantity = i.Quantity })
+          .ToList();
+
+        var checkResponse = await clientInventory.PostAsJsonAsync("Products/availability", availabilityRequest);
+
+        if (!checkResponse.IsSuccessStatusCode)
+        {
+            finalStatus = SaleStatus.Failed;
+            finalHistory.Action = "StockCheckFailed";
+            finalHistory.Details = "Erro ao verificar disponibilidade";
+            _logger.LogWarning("⚠️ Erro ao verificar disponibilidade para Sale {SaleId}", sale.Id);
+        }
+        else
+        {
+            var availability = await checkResponse.Content.ReadFromJsonAsync<AvailabilityResponse>();
+
+            if (availability is null || !availability.Available)
             {
-                var sale = JsonSerializer.Deserialize<Sale>(message);
-
-                if (sale is null)
-                {
-                    _logger.LogWarning("⚠️ Mensagem inválida recebida.");
-                    return;
-                }
-
-                var formattedJson = JsonSerializer.Serialize(sale, new JsonSerializerOptions { WriteIndented = true });
-                _logger.LogInformation($"📦 Mensagem recebida:\n{formattedJson}");
-
-                var client = _httpClientFactory.CreateClient("Inventory");
-
-                var availabilityRequest = sale.Items
-                    .Select(i => new { productId = i.ProductId, quantity = i.Quantity })
-                    .ToList();
-
-                var checkResponse = await client.PostAsJsonAsync("Products/availability", availabilityRequest);
-
-                if (!checkResponse.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning("⚠️ Erro ao verificar disponibilidade para Sale {SaleId}", sale.Id);
-                    return;
-                }
-
-                var availability = await checkResponse.Content.ReadFromJsonAsync<AvailabilityResponse>();
-
-                if (availability is null || !availability.Available)
-                {
-                    sale.Status = SaleStatus.Failed;
-                    sale.History.Add(new SaleHistory
-                    {
-                        SaleId = sale.Id,
-                        Action = "StockCheckFailed",
-                        Details = JsonSerializer.Serialize(availability?.Missing ?? new())
-                    });
-
-                    _logger.LogWarning("❌ Estoque insuficiente para Sale {SaleId}", sale.Id);
-                    return;
-                }
-
-                var decreaseResponse = await client.PostAsJsonAsync("Products/decrease", availabilityRequest);
+                finalStatus = SaleStatus.Failed;
+                finalHistory.Action = "StockCheckFailed";
+                finalHistory.Details = $"Estoque insuficiente para Sale {sale.Id}";
+                _logger.LogWarning("❌ Estoque insuficiente para Sale {SaleId}", sale.Id);
+            }
+            else
+            {
+                var decreaseResponse = await clientInventory.PostAsJsonAsync("Products/decrease", availabilityRequest);
 
                 if (!decreaseResponse.IsSuccessStatusCode)
                 {
-                    sale.Status = SaleStatus.Failed;
-                    sale.History.Add(new SaleHistory
-                    {
-                        SaleId = sale.Id,
-                        Action = "StockDecreaseFailed",
-                        Details = "Falha ao decrementar estoque"
-                    });
-
+                    finalStatus = SaleStatus.Failed;
+                    finalHistory.Action = "StockDecreaseFailed";
+                    finalHistory.Details = "Falha ao decrementar estoque";
                     _logger.LogError("❌ Erro ao decrementar estoque para Sale {SaleId}", sale.Id);
-                    return;
-                }
-
-                var decreaseResult = await decreaseResponse.Content.ReadFromJsonAsync<DecreaseResponse>();
-
-                if (decreaseResult is not null && decreaseResult.Success)
-                {
-                    sale.Status = SaleStatus.Confirmed;
-                    sale.History.Add(new SaleHistory
-                    {
-                        SaleId = sale.Id,
-                        Action = "StockDecreased",
-                        Details = "Estoque atualizado com sucesso"
-                    });
-
-                    _logger.LogInformation("✅ Venda confirmada e estoque decrementado. SaleId: {SaleId}", sale.Id);
                 }
                 else
                 {
-                    sale.Status = SaleStatus.Failed;
-                    sale.History.Add(new SaleHistory
+                    var decreaseResult = await decreaseResponse.Content.ReadFromJsonAsync<DecreaseResponse>();
+                    if (decreaseResult is not null && decreaseResult.Success)
                     {
-                        SaleId = sale.Id,
-                        Action = "StockDecreaseFailed",
-                        Details = JsonSerializer.Serialize(decreaseResult?.Failed ?? new())
-                    });
-
-                    _logger.LogError("❌ Falha ao decrementar estoque. SaleId: {SaleId}", sale.Id);
+                        finalStatus = SaleStatus.Confirmed;
+                        finalHistory.Action = "StockDecreased";
+                        finalHistory.Details = "Estoque atualizado com sucesso";
+                        _logger.LogInformation("✅ Venda confirmada e estoque decrementado. SaleId: {SaleId}", sale.Id);
+                    }
+                    else
+                    {
+                        finalStatus = SaleStatus.Failed;
+                        finalHistory.Action = "StockDecreaseFailed";
+                        finalHistory.Details = "Falha ao decrementar estoque.";
+                        _logger.LogError("❌ Falha ao decrementar estoque. SaleId: {SaleId}", sale.Id);
+                    }
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Erro ao processar mensagem");
-            }
+        }
 
-            await Task.Yield();
+        var updateRequest = new SaleStatusUpdateRequest
+        {
+            Id = sale.Id,
+            Status = finalStatus,
+            History = finalHistory
         };
+
+        var updateResponse = await salesClient.PatchAsJsonAsync("Sales/status", updateRequest, stoppingToken);
+
+        if (updateResponse.IsSuccessStatusCode)
+        {
+            _logger.LogInformation("✅ Status da venda {SaleId} atualizado com sucesso.", sale.Id);
+        }
+        else
+        {
+            _logger.LogError("❌ Falha ao atualizar o status da venda {SaleId}. Status Code: {StatusCode}", sale.Id, updateResponse.StatusCode);
+        }
+
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "❌ Erro ao processar mensagem");
+    }
+
+
+    await Task.Yield();
+};
 
         await channel.BasicConsumeAsync(
             queue: "sales",
