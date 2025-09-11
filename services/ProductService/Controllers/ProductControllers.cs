@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using ProductService.Models;
 using ProductService.DTOs;
 using ProductService.Dtos;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace ProductService.Controllers;
 
@@ -15,7 +17,7 @@ public class ProductsController : ControllerBase
     {
         _productService = productService;
     }
-
+    
     [HttpGet]
     public async Task<IActionResult> GetAll() =>
         Ok(await _productService.GetAllASync());
@@ -27,34 +29,58 @@ public class ProductsController : ControllerBase
         return product is null ? NotFound() : Ok(product);
     }
 
+    [Authorize]
     [HttpPost]
     public async Task<IActionResult> Create(Product product)
-
     {
+        var userId =  User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        product.CreatedBy = userId;
+
         var created = await _productService.CreateAsync(product);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
+    [Authorize]
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, Product input)
     {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
         var existing = await _productService.GetByIdASync(id);
-        if (existing is null) return NotFound();
+        if (existing is null || existing.CreatedBy != userId)
+        {
+
+            return NotFound();
+        }
 
         existing.Name = input.Name;
         existing.Description = input.Description;
         existing.Price = input.Price;
         existing.Stock = input.Stock;
+        existing.UpdatedAt = DateTime.UtcNow;
 
         var updated = await _productService.UpdateAsync(existing);
         return Ok(updated);
     }
 
+    [Authorize]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
         var product = await _productService.GetByIdASync(id);
-        if (product is null) return NotFound();
+        if (product is null || product.CreatedBy != userId)
+        {
+            return NotFound();
+        }
+
+        await _productService.DeleteAsync(product.Id);
 
         return NoContent();
     }
