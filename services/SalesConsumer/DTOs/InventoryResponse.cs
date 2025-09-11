@@ -1,4 +1,4 @@
-namespace SalesConsumer.Models;
+namespace SalesConsumer.DTOs;
 
 public class AvailabilityResponse
 {

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using SalesConsumer.Models;
+using SalesConsumer.DTOs;
 
 namespace SalesConsumer;
 
